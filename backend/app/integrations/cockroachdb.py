@@ -1,12 +1,16 @@
 from dataclasses import dataclass
 from urllib.parse import quote_plus
 
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine
+import psycopg
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass(frozen=True)
 class CockroachDBConfig:
+    """Runtime configuration required to connect to CockroachDB."""
+
     host: str
     port: int
     database: str
@@ -15,51 +19,46 @@ class CockroachDBConfig:
 
 
 class CockroachDBAdapter:
-    """Adapter responsible for communication with CockroachDB.
+    """Synchronous CockroachDB adapter.
 
-    Credentials are accepted only in memory and are never logged.
+    Uses psycopg directly because CockroachDB may return
+    a server version string that SQLAlchemy's PostgreSQL
+    dialect cannot parse correctly.
     """
 
-    def __init__(
-        self,
-        config: CockroachDBConfig,
-    ) -> None:
+    def __init__(self, config: CockroachDBConfig) -> None:
         self.config = config
 
-    def _create_engine(self) -> Engine:
-        """Create a short-lived SQLAlchemy engine.
-
-        The password is URL-encoded because it is part of the connection URL.
-        """
+    def _build_connection_url(self) -> str:
+        """Build the CockroachDB PostgreSQL connection URL."""
         username = quote_plus(self.config.username)
         password = quote_plus(self.config.password)
-        host = self.config.host
-        port = self.config.port
         database = quote_plus(self.config.database)
 
-        url = (
-            f"postgresql+psycopg://"
-            f"{username}:{password}@"
-            f"{host}:{port}/{database}"
-            f"?sslmode=require"
-        )
-
-        return create_engine(
-            url,
-            pool_pre_ping=True,
-            pool_size=1,
-            max_overflow=0,
-            connect_args={
-                "connect_timeout": 5,
-            },
+        return (
+            f"postgresql://{username}:{password}@"
+            f"{self.config.host}:{self.config.port}/{database}"
+            "?sslmode=require"
         )
 
     def test_connection(self) -> None:
-        """Execute a minimal query to verify connectivity and credentials."""
-        engine = self._create_engine()
+        """Test CockroachDB connectivity."""
+        connection_url = self._build_connection_url()
 
         try:
-            with engine.connect() as connection:
-                connection.execute(text("SELECT 1"))
-        finally:
-            engine.dispose()
+            with psycopg.connect(
+                connection_url,
+                connect_timeout=10,
+            ) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT 1")
+                    cursor.fetchone()
+        except Exception:
+            logger.exception(
+                "cockroachdb_connection_failed",
+                host=self.config.host,
+                port=self.config.port,
+                database=self.config.database,
+                username=self.config.username,
+            ) 
+            raise

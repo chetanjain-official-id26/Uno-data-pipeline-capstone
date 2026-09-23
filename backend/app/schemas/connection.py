@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
+
 class CreateConnectionRequest(BaseModel):
     """Request payload for creating an external data connection."""
 
@@ -53,7 +54,7 @@ class ConnectionResponse(BaseModel):
     Credentials are intentionally excluded.
     """
 
-    id: str
+    id: str 
     name: str
     type: str
     host: str

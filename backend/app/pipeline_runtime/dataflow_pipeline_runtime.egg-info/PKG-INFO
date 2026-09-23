@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: dataflow-pipeline-runtime
+Version: 1.0.0
+Summary: DataFlow Hub pipeline execution runtime
+Requires-Python: >=3.11
+Requires-Dist: pyspark<4,>=3.5
+Requires-Dist: boto3<2,>=1.35

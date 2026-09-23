@@ -1,0 +1,30 @@
+DEFAULT_INPUT_VIEW = "raw_data"
+
+MAX_PREVIEW_ROWS = 100
+
+DEFAULT_PAGE_SIZE = 20
+
+MAX_PAGE_SIZE = 100
+
+DEFAULT_CONNECTION_TIMEOUT = 5
+
+DEFAULT_STEP_ORDER = 1
+
+PIPELINE_STATUS_DRAFT = "draft"
+PIPELINE_STATUS_ACTIVE = "active"
+PIPELINE_STATUS_FAILED = "failed"
+PIPELINE_STATUS_COMPLETED = "completed"
+
+WRITE_MODE_APPEND = "append"
+WRITE_MODE_OVERWRITE = "overwrite"
+
+SQL_BLOCKED_KEYWORDS = [
+        "DROP",
+        "DELETE",
+        "INSERT",
+        "UPDATE",
+        "ALTER",
+        "CREATE",
+        "TRUNCATE"
+    ]
+ROUTER = "/api"

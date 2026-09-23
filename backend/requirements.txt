@@ -1,0 +1,10 @@
+structlog
+fastapi
+uvicorn
+pymongo
+sqlalchemy
+psycopg[binary]
+cryptography
+pydantic
+pydantic-settings
+boto3

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dataflow-pipeline-runtime"
+version = "1.0.0"
+description = "DataFlow Hub pipeline execution runtime"
+requires-python = ">=3.11"
+
+dependencies = [
+    "pyspark>=3.5,<4",
+    "boto3>=1.35,<2"
+]
+
+[project.scripts]
+dataflow-run = "dataflow_pipeline.runner:main"
+
+[tool.setuptools.packages.find]
+where = ["."]

@@ -3,6 +3,29 @@ from pymongo import ASCENDING, DESCENDING
 from app.db.mongodb import mongodb
 
 
+
+async def create_indexes():
+
+    if mongodb.database is None:
+        raise RuntimeError("MongoDB is not connected")
+
+    await mongodb.database["pipelines"].create_index(
+        "created_at"
+    )
+
+    await mongodb.database["transformations"].create_index(
+        [
+            ("pipeline_id", 1),
+            ("step_order", 1),
+        ],
+        unique=True,
+    )
+
+    await mongodb.database["pipeline_targets"].create_index(
+        "pipeline_id",
+        unique=True,
+    )
+
 async def create_indexes() -> None:
     """Create application indexes.
 
