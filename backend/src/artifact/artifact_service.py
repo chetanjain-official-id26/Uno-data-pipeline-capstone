@@ -1,42 +1,83 @@
-from pathlib import Path
+from typing import Any
+from uuid import uuid4
 
-from app.artifact.s3_uploader import S3Uploader
-from app.artifact.wheel_builder import WheelBuilder
+from src.artifact.manifest_builder import ManifestBuilder
 
 
 class ArtifactService:
+    """Builds and uploads pipeline deployment artifacts."""
 
     def __init__(
         self,
-        wheel_builder: WheelBuilder,
-        s3_uploader: S3Uploader,
-    ):
+        wheel_builder,
+        s3_uploader,
+        manifest_builder: ManifestBuilder | None = None,
+    ) -> None:
         self.wheel_builder = wheel_builder
         self.s3_uploader = s3_uploader
+        self.manifest_builder = (
+            manifest_builder
+            or ManifestBuilder()
+        )
 
-    def build_and_upload(
+    async def build_and_upload(
         self,
         pipeline_id: str,
         version: int,
-    ):
+        source_connection: dict[str, Any],
+        source_table: str,
+        transformations: list[dict[str, Any]],
+        target: dict[str, Any],
+        target_connection: dict[str, Any],
+    ) -> dict[str, Any]:
+        deployment_id = str(uuid4())
 
-        wheel_path = (
-            self.wheel_builder.build()
+        manifest = self.manifest_builder.build(
+            deployment_id=deployment_id,
+            pipeline_id=pipeline_id,
+            version=version,
+            source_connection=source_connection,
+            source_table=source_table,
+            transformations=transformations,
+            target=target,
+            target_connection=target_connection,
         )
 
-        object_key = (
-            f"pipelines/"
-            f"pipeline_{pipeline_id}/"
-            f"{version}/"
-            f"{Path(wheel_path).name}"
+        wheel_path = self.wheel_builder.build()
+
+        prefix = (
+            f"deployments/"
+            f"{pipeline_id}/"
+            f"{deployment_id}"
         )
 
-        s3_uri = self.s3_uploader.upload(
-            file_path=str(wheel_path),
-            object_key=object_key,
+        wheel_key = (
+            f"{prefix}/pipeline.whl"
+        )
+
+        manifest_key = (
+            f"{prefix}/manifest.json"
+        )
+
+        wheel_uri = await (
+            self.s3_uploader.upload_file(
+                wheel_path,
+                wheel_key,
+            )
+        )
+
+        manifest_uri = await (
+            self.s3_uploader.upload_json(
+                manifest,
+                manifest_key,
+            )
         )
 
         return {
-            "artifact_name": wheel_path.name,
-            "artifact_uri": s3_uri,
+            "deployment_id": deployment_id,
+            "wheel_key": wheel_key,
+            "manifest_key": manifest_key,
+            "wheel_uri": wheel_uri,
+            "manifest_uri": manifest_uri,
+            "manifest": manifest,
         }

@@ -4,20 +4,15 @@ from pydantic import BaseModel, Field
 
 
 class PreviewRequest(BaseModel):
-
-    limit: int = Field(
-        default=100,
-        ge=1,
-        le=1000
+    connection_id: str = Field(
+        ...,
+        min_length=1,
+        description="MongoDB connection ID.",
     )
 
 
 class PreviewResponse(BaseModel):
-
+    connection_id: str
     columns: list[str]
-
     rows: list[dict[str, Any]]
-
     row_count: int
-
-    step_order: int

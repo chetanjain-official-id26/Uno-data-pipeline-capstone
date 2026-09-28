@@ -1,80 +1,93 @@
-from bson import ObjectId
+from src.execution.preview_executor import (
+    PreviewExecutor,
+)
+from src.repositories.connection_repository import (
+    ConnectionRepository,
+)
+from src.repositories.transformation_repository import (
+    TransformationRepository,
+)
 
-from database import mongodb
-from src.execution.preview_executor import PreviewExecutor
 
+class TransformationService:
+    """Business logic for transformation preview."""
 
-class TransformService:
+    def __init__(
+        self,
+        connection_repository: ConnectionRepository,
+        transformation_repository: TransformationRepository,
+        preview_executor: PreviewExecutor | None = None,
+    ) -> None:
+        self.connection_repository = (
+            connection_repository
+        )
+        self.transformation_repository = (
+            transformation_repository
+        )
+        self.preview_executor = (
+            preview_executor
+            or PreviewExecutor()
+        )
+
     async def preview(
         self,
         connection_id: str,
         target_step_order: int,
     ) -> dict:
-        """Preview transformations for a database connection.
-
-        The connection ID is the source of truth. The service retrieves
-        the connection and its transformation steps directly without
-        requiring a pipeline ID.
-        """
-        db = mongodb.database
-
-        if db is None:
-            raise RuntimeError("MongoDB database is not initialized")
-
-        connections = db["connections"]
-        transformations = db["transformations"]
-
-        # Validate connection ID.
         if not connection_id or not connection_id.strip():
-            raise ValueError("Connection ID cannot be empty")
+            raise ValueError(
+                "Connection ID cannot be empty"
+            )
 
-        if not ObjectId.is_valid(connection_id):
-            raise ValueError("Invalid connection ID")
+        if target_step_order < 0:
+            raise ValueError(
+                "Target step order cannot be negative"
+            )
 
-        # Find the stored connection.
-        connection = await connections.find_one(
-            {
-                "_id": ObjectId(connection_id),
-            }
+        connection_id = connection_id.strip()
+
+        connection = (
+            await self.connection_repository
+            .get_by_id(connection_id)
         )
 
         if connection is None:
-            raise ValueError("Connection not found")
+            raise ValueError(
+                "Connection not found"
+            )
 
-        # Find transformation steps belonging to this connection.
-        steps_cursor = transformations.find(
-            {
-                "connection_id": connection_id,
-                "enabled": True,
-                "step_order": {
-                    "$lte": target_step_order,
-                },
-            }
-        ).sort("step_order", 1)
-
-        steps = await steps_cursor.to_list(length=None)
+        steps = (
+            await self.transformation_repository
+            .get_enabled_up_to_step(
+                connection_id=connection_id,
+                target_step_order=target_step_order,
+            )
+        )
 
         if not steps:
             raise ValueError(
                 "No transformation steps found for this connection"
             )
 
-        # Source table should come from the connection configuration.
         config = connection.get("config")
 
         if not config:
-            raise ValueError("Connection configuration is missing")
+            raise ValueError(
+                "Connection configuration is missing"
+            )
 
-        source_table = config.get("table_name") or config.get("source_table")
+        source_table = (
+            connection.get("table_name")
+            or config.get("table_name")
+            or config.get("source_table")
+        )
 
         if not source_table:
             raise ValueError(
                 "Source table is missing from connection configuration"
             )
 
-        executor = PreviewExecutor()
-
-        return executor.preview(
+        return self.preview_executor.preview(
             connection=connection,
             source_table=source_table,
             steps=steps,

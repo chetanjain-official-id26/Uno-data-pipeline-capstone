@@ -1,54 +1,67 @@
+from typing import Any
+
 from src.execution.preview_executor import PreviewExecutor
-from src.repositories.transformation_repository import (
-    TransformationRepository,
-)
+from src.repositories.connection_repository import ConnectionRepository
+from src.repositories.transformation_repository import TransformationRepository
 
 
 class PreviewService:
+    """Generate a preview using a stored database connection."""
 
     def __init__(self) -> None:
-        self.repository = TransformationRepository()
+        self.connection_repository = ConnectionRepository()
+        self.transformation_repository = TransformationRepository()
         self.executor = PreviewExecutor()
 
-    async def preview(
-        self,
-        connection_id: str,
-        step_order: int,
-        
-        preview_limit: int = 100,
-    ) -> dict:
-        """Preview a transformation step using connection ID.
-
-        Transformations are associated with a stored database connection,
-        not a pipeline.
-        """
+    async def preview(self, connection_id: str) -> dict[str, Any]:
+        # --------------------------------------------------
+        # 1. Validate connection ID
+        # --------------------------------------------------
         if not connection_id or not connection_id.strip():
             raise ValueError("Connection ID cannot be empty")
 
-        if step_order < 1:
-            raise ValueError("Step order must be greater than or equal to 1")
+        connection_id = connection_id.strip()
 
-        if preview_limit < 1:
-            raise ValueError("Preview limit must be greater than 0")
+        # --------------------------------------------------
+        # 2. Get stored connection
+        # --------------------------------------------------
+        connection = await self.connection_repository.get_by_id(connection_id)
 
-        transformations = await self.repository.get_by_connection(
-            connection_id
+        if connection is None:
+            raise ValueError("Connection not found")
+
+        # --------------------------------------------------
+        # 3. Get stored source table
+        # --------------------------------------------------
+        source_table = connection.get("table_name")
+
+        if not source_table:
+            raise ValueError(
+                "No source table has been stored for this connection. "
+                "Test the connection and select a table first."
+            )
+
+        # --------------------------------------------------
+        # 4. Get transformations
+        # --------------------------------------------------
+        transformations = (
+            await self.transformation_repository.get_by_connection(
+                connection_id
+            )
         )
 
-        if not transformations:
-            raise ValueError("No transformations found for this connection")
-
-        target_step = await self.repository.get_step(
-            connection_id,
-            step_order,
+        # --------------------------------------------------
+        # 5. Execute preview
+        # --------------------------------------------------
+        result = self.executor.preview(
+            connection=connection,
+            source_table=source_table,
+            steps=transformations,
         )
 
-        if not target_step:
-            raise ValueError("Transformation step not found")
+        # --------------------------------------------------
+        # 6. Add connection ID
+        # --------------------------------------------------
+        result["connection_id"] = connection_id
 
-        return self.executor.execute(
-            transformations=transformations,
-            source_documents=source_documents,
-            target_step=step_order,
-            preview_limit=preview_limit,
-        )
+        return result

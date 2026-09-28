@@ -1,6 +1,6 @@
 from pyspark.sql import DataFrame, SparkSession
 
-from app.engine.table_validator import validate_table_name
+from src.engine.table_validator import validate_table_name
 
 
 class TargetWriter:

@@ -18,6 +18,7 @@ def build_connection_document(
     username: str,
     encrypted_password: str,
     created_by: str,
+    table_name: str | None = None,
 ) -> dict[str, Any]:
     """Build the MongoDB document for an external connection.
 
@@ -25,22 +26,20 @@ def build_connection_document(
     """
     now = utc_now()
 
-    return {
+    document: dict[str, Any] = {
         "pipeline_id": pipeline_id,
-        "name": name,
-        "type": connection_type,
+        "name": name.strip(),
+        "type": connection_type.strip(),
         "config": {
-            "host": host,
+            "host": host.strip(),
             "port": port,
-            "database": database,
-            "username": username,
+            "database": database.strip(),
+            "username": username.strip(),
         },
         "credentials": {
             "password_encrypted": encrypted_password,
         },
-        # Lifecycle status of the saved connection.
         "status": "active",
-        # Separate from connection status.
         "test": {
             "status": "never_tested",
             "tested_at": None,
@@ -50,3 +49,8 @@ def build_connection_document(
         "created_at": now,
         "updated_at": now,
     }
+
+    if table_name:
+        document["table_name"] = table_name.strip()
+
+    return document

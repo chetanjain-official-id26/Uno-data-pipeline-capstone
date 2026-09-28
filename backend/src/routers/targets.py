@@ -1,19 +1,19 @@
+
 import logging
 
 from fastapi import APIRouter, HTTPException, status
 
 from src.engine.target_writer import TargetWriter
-
 from src.repositories.connection_repository import ConnectionRepository
 from src.repositories.pipeline_repository import PipelineRepository
 from src.repositories.target_repository import TargetRepository
-
 from src.schema.request_response_schema.target import (
     TargetCreate,
     TargetResponse,
+    TargetTestRequest,
+    TargetTestResponse,
     TargetUpdate,
 )
-
 from src.services.target_service import TargetService
 
 
@@ -25,6 +25,10 @@ router = APIRouter(
     tags=["Targets"],
 )
 
+
+# ============================================================
+# DEPENDENCIES
+# ============================================================
 
 target_repository = TargetRepository()
 pipeline_repository = PipelineRepository()
@@ -40,6 +44,64 @@ target_service = TargetService(
 )
 
 
+# ============================================================
+# TEST TARGET
+# ============================================================
+
+
+@router.post(
+    "/{pipeline_id}/target/test",
+    response_model=TargetTestResponse,
+    status_code=status.HTTP_200_OK,
+)
+async def test_target(
+    pipeline_id: str,
+    data: TargetTestRequest,
+):
+    """Test a stored connection as a target."""
+
+    if not pipeline_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pipeline ID cannot be empty",
+        )
+
+    try:
+        result = await target_service.test_target(
+            connection_id=data.connection_id,
+            target_table=data.target_table,
+            write_mode=data.write_mode.value,
+        )
+
+        return TargetTestResponse(**result)
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        logger.exception(
+            "target_test_failed",
+            extra={
+                "pipeline_id": pipeline_id,
+                "connection_id": data.connection_id,
+                "target_table": data.target_table,
+            },
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Target connection test failed",
+        ) from exc
+
+
+# ============================================================
+# CREATE TARGET
+# ============================================================
+
+
 @router.post(
     "/{pipeline_id}/target",
     response_model=dict,
@@ -49,16 +111,8 @@ async def create_target(
     pipeline_id: str,
     data: TargetCreate,
 ):
-    """
-    Create a target configuration for a pipeline.
+    """Create a target configuration for a pipeline."""
 
-    Takes a pipeline ID and target configuration, validates the
-    target details, persists the target configuration, and returns
-    the generated target ID.
-
-    Raises an HTTP 400 error when the pipeline ID or target
-    configuration is invalid.
-    """
     if not pipeline_id.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -66,9 +120,14 @@ async def create_target(
         )
 
     try:
+        target_data = data.model_dump()
+
+        # Store enum value as a string in MongoDB.
+        target_data["write_mode"] = data.write_mode.value
+
         target_id = await target_service.create_target(
             pipeline_id=pipeline_id,
-            data=data.model_dump(),
+            data=target_data,
         )
 
         return {
@@ -82,6 +141,24 @@ async def create_target(
             detail=str(exc),
         ) from exc
 
+    except Exception as exc:
+        logger.exception(
+            "target_creation_failed",
+            extra={
+                "pipeline_id": pipeline_id,
+            },
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create target configuration",
+        ) from exc
+
+
+# ============================================================
+# GET TARGET
+# ============================================================
+
 
 @router.get(
     "/{pipeline_id}/target",
@@ -91,16 +168,8 @@ async def create_target(
 async def get_target(
     pipeline_id: str,
 ):
-    """
-    Retrieve the target configuration for a pipeline.
+    """Retrieve the target configuration for a pipeline."""
 
-    Takes a pipeline ID, retrieves the corresponding target
-    configuration, and returns the destination details.
-
-    Raises an HTTP 400 error when the pipeline ID is invalid
-    and an HTTP 404 error when the target configuration does
-    not exist.
-    """
     if not pipeline_id.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -118,6 +187,19 @@ async def get_target(
             detail=str(exc),
         ) from exc
 
+    except Exception as exc:
+        logger.exception(
+            "target_fetch_failed",
+            extra={
+                "pipeline_id": pipeline_id,
+            },
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch target configuration",
+        ) from exc
+
     if target is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -125,6 +207,11 @@ async def get_target(
         )
 
     return target
+
+
+# ============================================================
+# UPDATE TARGET
+# ============================================================
 
 
 @router.patch(
@@ -135,16 +222,8 @@ async def update_target(
     pipeline_id: str,
     data: TargetUpdate,
 ):
-    """
-    Update a pipeline target configuration.
+    """Update a pipeline target configuration."""
 
-    Takes a pipeline ID and the target fields to update, modifies
-    the existing target configuration, and returns a success message.
-
-    Raises an HTTP 400 error when the pipeline ID or update data
-    is invalid and an HTTP 404 error when the target configuration
-    does not exist.
-    """
     if not pipeline_id.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -161,6 +240,10 @@ async def update_target(
             detail="At least one field is required for update",
         )
 
+    # Normalize enum to string before storing in MongoDB.
+    if "write_mode" in update_data:
+        update_data["write_mode"] = data.write_mode.value
+
     try:
         updated = await target_service.update_target(
             pipeline_id=pipeline_id,
@@ -171,6 +254,19 @@ async def update_target(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        logger.exception(
+            "target_update_failed",
+            extra={
+                "pipeline_id": pipeline_id,
+            },
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update target configuration",
         ) from exc
 
     if not updated:
@@ -184,6 +280,11 @@ async def update_target(
     }
 
 
+# ============================================================
+# DELETE TARGET
+# ============================================================
+
+
 @router.delete(
     "/{pipeline_id}/target",
     status_code=status.HTTP_200_OK,
@@ -191,16 +292,8 @@ async def update_target(
 async def delete_target(
     pipeline_id: str,
 ):
-    """
-    Delete a pipeline target configuration.
+    """Delete a pipeline target configuration."""
 
-    Takes a pipeline ID, removes the corresponding target
-    configuration, and returns a success message.
-
-    Raises an HTTP 400 error when the pipeline ID is invalid
-    and an HTTP 404 error when the target configuration does
-    not exist.
-    """
     if not pipeline_id.strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -218,6 +311,19 @@ async def delete_target(
             detail=str(exc),
         ) from exc
 
+    except Exception as exc:
+        logger.exception(
+            "target_deletion_failed",
+            extra={
+                "pipeline_id": pipeline_id,
+            },
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete target configuration",
+        ) from exc
+
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -227,3 +333,4 @@ async def delete_target(
     return {
         "message": "Target configuration deleted successfully",
     }
+

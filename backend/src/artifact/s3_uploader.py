@@ -1,44 +1,80 @@
+import asyncio
+import json
 from pathlib import Path
+from typing import Any
 
 import boto3
 
-from app.core.config import get_settings
-
 
 class S3Uploader:
+    """Uploads deployment artifacts to S3."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        bucket: str,
+        region: str | None = None,
+    ) -> None:
+        if not bucket:
+            raise ValueError(
+                "S3 bucket is required"
+            )
 
-        settings = get_settings()
-
-        self.bucket = settings.s3_bucket
+        self.bucket = bucket
 
         self.client = boto3.client(
             "s3",
-            region_name=settings.s3_region,
-            aws_access_key_id=settings.s3_access_key_id,
-            aws_secret_access_key=settings.s3_secret_access_key,
+            region_name=region,
         )
 
-    def upload(
+    async def upload_file(
         self,
-        file_path: str,
-        object_key: str,
+        file_path: str | Path,
+        key: str,
     ) -> str:
+        file_path = Path(
+            file_path
+        )
 
-        path = Path(file_path)
-
-        if not path.exists():
+        if not file_path.exists():
             raise FileNotFoundError(
                 f"Artifact not found: {file_path}"
             )
 
-        self.client.upload_file(
-            str(path),
+        if not file_path.is_file():
+            raise ValueError(
+                f"Artifact path is not a file: {file_path}"
+            )
+
+        await asyncio.to_thread(
+            self.client.upload_file,
+            str(file_path),
             self.bucket,
-            object_key,
+            key,
         )
 
         return (
-            f"s3://{self.bucket}/{object_key}"
+            f"s3://{self.bucket}/{key}"
+        )
+
+    async def upload_json(
+        self,
+        data: dict[str, Any],
+        key: str,
+    ) -> str:
+        body = json.dumps(
+            data,
+            indent=2,
+            default=str,
+        )
+
+        await asyncio.to_thread(
+            self.client.put_object,
+            Bucket=self.bucket,
+            Key=key,
+            Body=body.encode("utf-8"),
+            ContentType="application/json",
+        )
+
+        return (
+            f"s3://{self.bucket}/{key}"
         )

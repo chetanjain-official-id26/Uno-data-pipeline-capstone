@@ -1,33 +1,41 @@
+
 from pyspark.sql import DataFrame
 
 
-class TargetWriter:
+def write_target(
+    dataframe: DataFrame,
+    target: dict,
+) -> None:
 
-    def write(
-        self,
-        df: DataFrame,
-        jdbc_url: str,
-        username: str,
-        password: str,
-        target_table: str,
-        write_mode: str,
-    ) -> int:
+    connection = target["connection"]
 
-        if write_mode not in {
-            "APPEND",
-            "OVERWRITE",
-        }:
-            raise ValueError(
-                f"Unsupported write mode: {write_mode}"
-            )
+    table = target["table"]
+
+    write_mode = target["write_mode"]
+
+    connection_type = connection["type"]
+
+    if connection_type == "postgresql":
 
         (
-            df.write
+            dataframe.write
             .format("jdbc")
-            .option("url", jdbc_url)
-            .option("dbtable", target_table)
-            .option("user", username)
-            .option("password", password)
+            .option(
+                "url",
+                connection["jdbc_url"],
+            )
+            .option(
+                "dbtable",
+                table,
+            )
+            .option(
+                "user",
+                connection["username"],
+            )
+            .option(
+                "password",
+                connection["password"],
+            )
             .option(
                 "driver",
                 "org.postgresql.Driver",
@@ -38,4 +46,9 @@ class TargetWriter:
             .save()
         )
 
-        return df.count()
+        return
+
+    raise ValueError(
+        f"Unsupported target type: {connection_type}"
+    )
+

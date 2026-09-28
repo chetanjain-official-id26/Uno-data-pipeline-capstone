@@ -1,52 +1,68 @@
-from fastapi import APIRouter, HTTPException, status
 
-from src.schema.request_response_schema.transform import (
+import logging
+
+from fastapi import APIRouter, HTTPException
+
+from src.schema.request_response_schema.preview import (
     PreviewRequest,
     PreviewResponse,
 )
-from src.services.preview_service import PreviewService
+from src.services.preview_service import (
+    PreviewService,
+)
+
+
+logger = logging.getLogger(__name__)
+
 
 router = APIRouter(
+    prefix="/preview",
     tags=["Preview"],
 )
 
 
+service = PreviewService()
+
+
 @router.post(
-    "/connections/{connection_id}/transformations/{step_order}/preview",
+    "",
     response_model=PreviewResponse,
-    status_code=status.HTTP_200_OK,
 )
-async def preview_transformation(
-    connection_id: str,
-    step_order: int,
+async def preview(
     request: PreviewRequest,
-):
-    """Preview a specific transformation step for a connection."""
-    if not connection_id.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Connection ID cannot be empty",
-        )
-
-    if step_order < 1:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Step order must be greater than or equal to 1",
-        )
-
-    service = PreviewService()
+) -> PreviewResponse:
 
     try:
+
         result = await service.preview(
-            connection_id=connection_id,
-            step_order=step_order,
-            preview_limit=request.limit,
+            connection_id=request.connection_id,
         )
 
-        return result
+        return PreviewResponse(
+            **result
+        )
 
     except ValueError as exc:
+
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=400,
             detail=str(exc),
         ) from exc
+
+    except Exception as exc:
+
+        logger.exception(
+            "preview_execution_failed",
+            extra={
+                "connection_id": (
+                    request.connection_id
+                ),
+            },
+        )
+
+        # Keep actual error visible while debugging.
+        raise HTTPException(
+            status_code=500,
+            detail=f"Preview failed: {exc}",
+        ) from exc
+

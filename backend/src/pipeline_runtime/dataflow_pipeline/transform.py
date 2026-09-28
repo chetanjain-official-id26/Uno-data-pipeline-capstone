@@ -1,32 +1,116 @@
-from pyspark.sql import DataFrame, SparkSession
+
+from pyspark.sql import DataFrame
+from pyspark.sql import functions as F
 
 
-class TransformationExecutor:
+def apply_transformations(
+    dataframe: DataFrame,
+    transformations: list[dict],
+) -> DataFrame:
 
-    def execute(
-        self,
-        spark: SparkSession,
-        source_df: DataFrame,
-        transformations: list[dict],
-    ) -> DataFrame:
+    ordered = sorted(
+        transformations,
+        key=lambda step: step.get(
+            "order",
+            0,
+        ),
+    )
 
-        source_df.createOrReplaceTempView(
-            "raw_data"
+    for step in ordered:
+
+        step_type = step["type"]
+
+        config = step.get(
+            "config",
+            {},
         )
 
-        result = source_df
+        if step_type == "FILTER":
 
-        for transformation in sorted(
-            transformations,
-            key=lambda item: item["step_order"],
-        ):
-
-            result = spark.sql(
-                transformation["sql_query"]
+            dataframe = dataframe.filter(
+                _build_filter(config)
             )
 
-            result.createOrReplaceTempView(
-                transformation["output_view"]
+        elif step_type == "SELECT":
+
+            columns = config["columns"]
+
+            dataframe = dataframe.select(
+                *columns
             )
 
-        return result
+        elif step_type == "RENAME":
+
+            dataframe = dataframe.withColumnRenamed(
+                config["source"],
+                config["target"],
+            )
+
+        elif step_type == "DROP":
+
+            dataframe = dataframe.drop(
+                *config["columns"]
+            )
+
+        elif step_type == "CAST":
+
+            dataframe = dataframe.withColumn(
+                config["column"],
+                F.col(
+                    config["column"]
+                ).cast(
+                    config["data_type"]
+                ),
+            )
+
+        else:
+
+            raise ValueError(
+                f"Unsupported transformation: {step_type}"
+            )
+
+    return dataframe
+
+
+def _build_filter(
+    config: dict,
+):
+
+    column = F.col(
+        config["column"]
+    )
+
+    operator = config["operator"]
+
+    value = config.get(
+        "value"
+    )
+
+    if operator == "=":
+        return column == value
+
+    if operator == "!=":
+        return column != value
+
+    if operator == ">":
+        return column > value
+
+    if operator == ">=":
+        return column >= value
+
+    if operator == "<":
+        return column < value
+
+    if operator == "<=":
+        return column <= value
+
+    if operator == "IS_NULL":
+        return column.isNull()
+
+    if operator == "IS_NOT_NULL":
+        return column.isNotNull()
+
+    raise ValueError(
+        f"Unsupported filter operator: {operator}"
+    )
+

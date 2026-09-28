@@ -1,6 +1,6 @@
 import re
 
-from src.constants import SQL_BLOCKED_KEYWORDS
+from src.constants.constants import SQL_BLOCKED_KEYWORDS
 class SQLGuard:
 
     BLOCKED_KEYWORDS = SQL_BLOCKED_KEYWORDS
